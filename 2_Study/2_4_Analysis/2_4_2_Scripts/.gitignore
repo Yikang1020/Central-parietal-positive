@@ -2,3 +2,5 @@
 2_4_2_2_temp/
 2_4_2_3_temp/
 2_4_2_1_figures/
+*.db
+*_chain_*
