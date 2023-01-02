@@ -1,0 +1,93 @@
+---
+title: "Simulate! Simulate! - Part 2: A linear mixed model"
+source: https://aosmith.rbind.io/2018/04/23/simulate-simulate-part-2/
+---
+
+The author was using a classic forestry example, where stands of trees are somehow chosen for sampling and then multiple plots within each stand are measured.
+
+This is a design with two levels, stands and plots; we could add a third level if individual trees were measured in each plot.
+
+The formula of regression style:
+
+$$
+y_t=\mu+(b_s)_t+\epsilon_t
+$$
+
+-   $y_t$ is the recorded value for the $t_{th}$ observation of the quantitative response variable
+
+-   $\mu$ is the overall mean response
+
+-   $b_s$ is the (random) effect of the $s_{th}$ stand on the response. $s$ goes from 1 to the total number of stands sampled.
+
+    The stand-level random effects are assumed to come from an iid normal distribution with a mean of 0 and some shared, stand-level variance.
+
+    $\sigma_{s}^2:b_s \sim N(0,\sigma_{s}^2)$
+
+-   $\epsilon_t$ is the observation-level random effect (the residual error term). Since plots are the level of observation in my scenario, this is essentially the effect of each plot measurement on the response.
+
+    $\sigma^2:\epsilon_t \sim N(0,\sigma^2)$
+
+```{r}
+set.seed(16)
+```
+
+-   The true mean ($\mu$) will be 10
+
+-   The stand-level variance ($\sigma_{s}^2$) will be set at 4, so the standard deviation ($\sigma_{s}$) is 2.
+
+-   The observation-level random effect variance ($\sigma^2$) will be set at 1, so the standard deviation ($\sigma$) is 1.
+
+```{r}
+nstand = 5
+nplot = 4
+mu = 10
+sds = 2
+sd = 1
+```
+
+```{r}
+( stand = rep(LETTERS[1:nstand], each = nplot) )
+```
+
+```{r}
+( plot = letters[1:(nstand*nplot)] )
+```
+
+```{r}
+( standeff = rnorm(nstand, 0, sds) )
+```
+
+```{r}
+( standeff = rep(standeff, each = nplot) )
+```
+
+```{r}
+( ploteff = rnorm(nstand*nplot, 0, sd) )
+```
+
+```{r}
+( dat = data.frame(stand, standeff, plot, ploteff) )
+```
+
+I now have the fixed values of the parameters, the variable to represent the random effect in a model, and the simulated effects of stands and plots drawn from their defined distributions. That\'s all the pieces I need to calculate my response variable.
+
+
+The statistical model$$
+y_t=\mu+(b_s)_t+\epsilon_t
+$$
+
+```{r}
+( dat$resp = with(dat, mu + standeff + ploteff ) )
+```
+
+```{r}
+dat
+```
+
+Now that I have successfully created the dataset I showed you at the start of this section, it\'s time for model fitting! I can fit a model with two sources of variation (stand and plot) with, e.g., the function from package **lme4**.
+
+```{r}
+library(lme4)
+fit1 = lmer(resp ~ 1 + (1|stand), data = dat)
+fit1
+```
