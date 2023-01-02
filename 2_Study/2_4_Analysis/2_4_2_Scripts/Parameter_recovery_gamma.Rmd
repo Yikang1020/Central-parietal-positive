@@ -1,0 +1,155 @@
+---
+title: "parameter recovery"
+source: "https://stats.stackexchange.com/questions/447029/parameter-recovery-gamma-distribution-and-model-with-a-random-intercept"
+output: html_notebook
+---
+
+The author was trying to simulate data from a gamma distribution and then fit a Generalized Linear Mixed Model (GLMM) to recover the parameters. The parameter recovery for the fixed effects is agreeable but the random intercept parameter doesn't seem correct.
+
+```{r}
+library(tidyverse)
+library(lme4)
+```
+
+The author was simulating some data from a scenario where there are,
+
+-   40 subjects, who are participating in a longitudinal study with data collected at,
+
+-   3 timepoints (T0, T1, T2) with,
+
+-   30 replicates at each timepoint. In the code below, this is done using a function with a number of different arguments to specify the subjects, repeats, fixed effects values as well as the random intercept SD.
+
+```{r}
+subjects <- 40 # number of subjects
+repeats  <- 30 # number of replicates per time (3*repeats per subject)
+beta_T0   <-  0.2  # Intercept = exp(beta_0)
+beta_T1  <-  -0.1  # Effect at Time 1 relative to base-line effect
+beta_T2  <-  0.15  # Effect at Time 2 relative to base-line effect 
+sigmaI <- 0.2 # between-subject SD
+```
+
+disassemble 'GenData' function
+
+```{r}
+df_data <- expand.grid(I = 1:subjects, r = 1:repeats, T = 0:2) %>% #expand.grid is equal to multi-for
+    arrange(I, T, r)
+df_data
+```
+
+```{r}
+# Random intercept for each individual
+
+df_I <- tibble(I = unique(df_data$I))
+df_I$deltaI <- rnorm(nrow(df_I), 0, sigmaI)
+df_I
+```
+
+```{r}
+# Beta intercepts for Time factor
+
+df_beta <- tibble(T = c(0,1,2),
+                  beta = c(beta_T0, 
+                           beta_T0 + beta_T1, 
+                           beta_T0 + beta_T2))
+df_beta 
+```
+
+```{r}
+# Combining it together and taking exponential of the mean
+
+df_data <- df_data %>% 
+  left_join(df_I, by = "I") %>% 
+  left_join(df_beta, by = "T") %>%
+  mutate(
+    ln_mu  = beta + deltaI,
+    mu     = exp(ln_mu)
+    ) 
+df_data
+```
+
+```{r}
+# Calculating the shape parameter using the formula, mean = shape x scale and generating individual values from a gamma distribution
+
+df_data$shape <- df_data$mu / 0.15 
+df_data$y <- 0.0
+for(i in 1:nrow(df_data)) {
+  df_data$y[i] <- rgamma(1,shape = df_data$shape[i], scale = 0.15)
+}
+df_data
+```
+
+```{r}
+# Setting as factors
+
+df_data$I   <- factor(df_data$I)
+df_data$T   <- factor(df_data$T)
+df_data
+```
+
+'GenData' function
+
+```{r}
+GenData <- function(subjects, repeats, beta_0, beta_T1, beta_T2, sigmaI) {
+
+  # Setting seed
+
+  set.seed(248)
+
+  # Creating data frame
+
+  df_data <- expand.grid(I = 1:subjects, r = 1:repeats, T = 0:2) %>% 
+    arrange(I, T, r)
+
+  # Random intercept for each individual
+
+  df_I <- tibble(I = unique(df_data$I))
+  df_I$deltaI <- rnorm(nrow(df_I), 0, sigmaI)
+
+  # Beta intercepts for Time factor
+
+  df_beta <- tibble(T = c(0,1,2),
+                    beta = c(beta_T0, beta_T0 + beta_T1, beta_T0 + beta_T2))
+
+  # Combining it together and taking exponential of the mean
+
+  df_data <- df_data %>% 
+    left_join(df_I, by = "I") %>% 
+    left_join(df_beta, by = "T") %>%
+    mutate(
+      ln_mu  = beta + deltaI,
+      mu     = exp(ln_mu)
+      ) 
+
+  # Calculating the shape parameter using the formula, mean = shape x scale and generating individual values from a gamma distribution
+
+  df_data$shape <- df_data$mu / 0.15 
+  df_data$y <- 0.0
+  for(i in 1:nrow(df_data)) {
+    df_data$y[i] <- rgamma(1,shape = df_data$shape[i], scale = 0.15)
+    }
+
+  # Setting as factors
+
+  df_data$I   <- factor(df_data$I)
+  df_data$T   <- factor(df_data$T)
+
+  return (df_data)
+}
+```
+
+Generating data
+
+```{r}
+df_data <- GenData(subjects, repeats, beta_T0, beta_T1, beta_T2, sigmaI)
+
+```
+
+Specifying model and getting model summary
+
+```{r}
+fit <- glmer(y ~ 1 + T + (1|I), 
+             family = Gamma(link = "log"),
+             data = df_data)
+
+summary(fit)
+```
